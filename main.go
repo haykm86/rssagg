@@ -5,15 +5,22 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
+
+	"database/sql"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
+	"github.com/haykm86/rssagg/internal/database"
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
-func main() {
-	fmt.Println("Hello, World!")
+type apiConfig struct {
+	DB *database.Queries
+}
 
+func main() {
 	err := godotenv.Load(".env")
 	if err != nil {
 		log.Println("Warning: .env file not loaded:", err)
@@ -23,7 +30,25 @@ func main() {
 		log.Fatal("PORT is not set")
 	}
 
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("DB_URL is not set")
+	}
+
+	conn, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+
+	db := database.New(conn)
+
+	apiCfg := apiConfig{
+		DB: db,
+	}
+
 	fmt.Println("PORT:", portString)
+
+	go startScraping(db, 10, time.Minute)
 
 	router := chi.NewRouter()
 
@@ -41,7 +66,13 @@ func main() {
 
 	v1Router.Get("/healthz", handlerReadiness)
 	v1Router.Get("/err", handleErr)
-
+	v1Router.Post("/users", apiCfg.handlerCreateUser)
+	v1Router.Get("/users", apiCfg.middlewareAuth(apiCfg.handlerGetUserByAPIKey))
+	v1Router.Post("/feeds", apiCfg.middlewareAuth(apiCfg.handlerCreateFeed))
+	v1Router.Get("/feeds", apiCfg.handlerGetFeeds)
+	v1Router.Post("/feeds_follows", apiCfg.middlewareAuth(apiCfg.handlerCreateFeedFollow))
+	v1Router.Get("/feeds_follows", apiCfg.middlewareAuth(apiCfg.handlerGetFeedFollows))
+	v1Router.Delete("/feeds_follows/{feedFollowID}", apiCfg.middlewareAuth(apiCfg.handlerDeleteFeedFollows))
 	router.Mount("/v1", v1Router)
 
 	srv := &http.Server{
