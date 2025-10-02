@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/haykm86/rssagg/internal/database"
 )
 
@@ -52,7 +53,32 @@ func scrapeFeed(db *database.Queries, wg *sync.WaitGroup, feed database.Feed) {
 	}
 
 	for _, item := range rssFeed.Channel.Item {
-		log.Println("Found post", item.Title, "on feed", feed.Name)
+		description := item.Description
+		if description == "" {
+			description = item.Title
+		}
+		publishedAt, err := time.Parse(time.RFC1123Z, item.PubDate)
+		if err != nil {
+			log.Println("error parsing published at", err)
+		}
+		_, err = db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			Title:       item.Title,
+			Description: description,
+			PublishedAt: publishedAt,
+			Url:         item.Link,
+			FeedID:      feed.ID,
+		})
+
+		if err != nil {
+			if err.Error() == "pq: duplicate key value violates unique constraint \"posts_url_key\"" {
+				continue
+			}
+			
+			log.Println("error creating post", err)
+		}
 	}
 
 	log.Printf("Feed %s collected, %v posts found", feed.Name, len(rssFeed.Channel.Item))
