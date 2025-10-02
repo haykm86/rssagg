@@ -54,10 +54,8 @@ func (apiCfg *apiConfig) handlerDeleteFeedFollows(w http.ResponseWriter, r *http
 	feedFollowIDstr := chi.URLParam(r, "feedFollowID")
 	feedFollowId, err := uuid.Parse(feedFollowIDstr)
 	if err != nil {
-		if err != nil {
-			respondWithError(w, 400, fmt.Sprintf("Couldn't get feed Id %v", err))
-			return
-		}
+		respondWithError(w, 400, fmt.Sprintf("Couldn't get feed Id %v", err))
+		return
 	}
 
 	err = apiCfg.DB.DeleteFeedFollow(r.Context(), database.DeleteFeedFollowParams{
